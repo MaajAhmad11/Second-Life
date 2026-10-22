@@ -125,13 +125,14 @@ function streamBotMessage(text, setMessages) {
   ]);
 
   let index = 0;
+  const step = Math.max(1, Math.ceil(text.length / 50));
 
   const streamNextCharacter = () => {
     if (index >= text.length) {
       return;
     }
 
-    index += 1;
+    index = Math.min(text.length, index + step);
 
     setMessages((prev) =>
       prev.map((message) =>
@@ -144,7 +145,9 @@ function streamBotMessage(text, setMessages) {
       )
     );
 
-    setTimeout(streamNextCharacter, 18);
+    if (index < text.length) {
+      setTimeout(streamNextCharacter, 16);
+    }
   };
 
   streamNextCharacter();
@@ -225,8 +228,44 @@ export default function ChatWidget() {
     setSending(true);
 
     try {
-      const response = await api.post('/chat/', { message: text });
-      const data = response.data;
+      let data = null;
+
+      try {
+        const response = await api.post('/chat/', { message: text });
+        data = response.data;
+      } catch (apiErr) {
+        console.warn('[SecondLife Chatbot] Primary api call failed, attempting fallback...', apiErr);
+
+        // Fallback strategies:
+        // 1. Same-origin proxy /api/chat/
+        // 2. Direct Render URL https://second-life-e45t.onrender.com/api/chat/
+        const fallbackUrls = [
+          '/api/chat/',
+          'https://second-life-e45t.onrender.com/api/chat/'
+        ];
+
+        let success = false;
+        for (const url of fallbackUrls) {
+          try {
+            const fetchRes = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: text })
+            });
+            if (fetchRes.ok) {
+              data = await fetchRes.json();
+              success = true;
+              break;
+            }
+          } catch (fetchErr) {
+            console.warn(`[SecondLife Chatbot] Fallback fetch failed for ${url}:`, fetchErr);
+          }
+        }
+
+        if (!success || !data) {
+          throw apiErr;
+        }
+      }
 
       const reply =
         typeof data?.reply === 'string'
@@ -235,6 +274,10 @@ export default function ChatWidget() {
           ? data.answer
           : typeof data?.response === 'string'
           ? data.response
+          : typeof data?.message === 'string'
+          ? data.message
+          : typeof data?.text === 'string'
+          ? data.text
           : '';
 
       console.log(

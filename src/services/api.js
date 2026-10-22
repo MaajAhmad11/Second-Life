@@ -2,10 +2,6 @@ import axios from 'axios';
 
 // Sanitize base URL to ensure valid requests in both local dev and production
 export const getBaseURL = () => {
-  if (import.meta.env.DEV) {
-    return '/api';
-  }
-
   const envUrl = import.meta.env.VITE_API_BASE_URL;
 
   if (
@@ -14,6 +10,19 @@ export const getBaseURL = () => {
     !envUrl.includes('placeholder')
   ) {
     return envUrl;
+  }
+
+  // When in Vite local development OR running on Vercel (*.vercel.app),
+  // use same-origin '/api' so vercel.json proxies requests directly to Render
+  // without CORS or preflight issues.
+  if (
+    import.meta.env.DEV ||
+    (typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' ||
+       window.location.hostname.endsWith('.vercel.app') ||
+       window.location.hostname.includes('vercel.app')))
+  ) {
+    return '/api';
   }
 
   return 'https://second-life-e45t.onrender.com/api';
@@ -32,6 +41,15 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
+    // The chatbot endpoint is public and does not require credentials.
+    // Strip Authorization to prevent 401s from stale/expired tokens in localStorage.
+    if (config.url && config.url.includes('/chat')) {
+      if (config.headers) {
+        delete config.headers.Authorization;
+      }
+      return config;
+    }
+
     const token = localStorage.getItem('secondlife_token');
 
     if (token) {
