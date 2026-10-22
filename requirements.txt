@@ -11,3 +11,4 @@ whitenoise>=6.6.0
 django-storages[boto3]>=1.14,<2
 
 phonenumbers>=9.0.0
+python-dotenv>=1.0.0
